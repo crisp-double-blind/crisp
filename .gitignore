@@ -1,0 +1,6 @@
+build
+.*
+!.gitignore
+!.clang-format
+imgui.ini
+*.bin

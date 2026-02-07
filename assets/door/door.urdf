@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot name="door">
+  <material name="body">
+    <color rgba=".8 .6 .4 1"/>
+  </material>
+
+  <link name="base">
+    <visual>
+      <origin rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="door.obj"/>
+      </geometry>
+      <!-- <material name="body"/> -->
+    </visual>
+    <collision>
+      <origin rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="door.obj"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="door_plate.obj"/>
+      </geometry>
+      <!-- <material name="body"/> -->
+    </visual>
+    <collision>
+      <origin rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="door_plate.obj"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+
+
+  <joint name="joint1" type="revolute">
+    <origin xyz="0 0 0"/>
+    <parent link="base"/>
+    <child link="lever"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.6981" upper="0.6981"/>
+    <dynamics friction="0.06"/>
+  </joint>
+
+
+  <link name="lever">
+    <visual>
+      <origin rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="door_lever.obj"/>
+      </geometry>
+      <!-- <material name="body"/> -->
+    </visual>
+    <collision>
+      <origin rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="door_lever.obj"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.06 0 0.045" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.0001658" ixy="0" ixz="0" iyy="0.0001658" iyz="0" izz="0.000005"/>
+    </inertial>
+  </link>
+</robot>
