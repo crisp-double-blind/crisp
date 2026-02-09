@@ -8,7 +8,6 @@ get_filename_component(CRISP_LIB_DIR "${CONFIG_DIR}" DIRECTORY)
 get_filename_component(CRISP_ROOT_DIR "${CRISP_LIB_DIR}" DIRECTORY)
 
 set(crisp_INCLUDE_DIRS "${CRISP_ROOT_DIR}/include")
-set(crisp_LIBRARIES "${CRISP_LIB_DIR}/crisp.lib" "${CRISP_LIB_DIR}/crisp-app.lib")
 
 if(NOT TARGET crisp::crisp)
   add_library(crisp::crisp SHARED IMPORTED)
