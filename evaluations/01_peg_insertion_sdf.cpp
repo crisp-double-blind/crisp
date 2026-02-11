@@ -1,10 +1,18 @@
 #include <crisp/crisp.hpp>
 
-#include <numbers>
-#include <algorithm>
+#include "utils/math.hpp"
 
 int main() {
-  crisp::register_sdf(
+  double tol = 100e-6;
+
+  double radius = 0.025 - tol / 2;
+  double height = 0.10;
+  double mass = 0.01;
+  double theta = utils::deg2rad(0.5);
+  double y_offset = -std::sin(theta) * height / 2;
+  double mu = 0.01;
+
+  int hole_sdf = crisp::register_sdf(
     [](Eigen::Vector3r const& x, Eigen::VectorXr const& p) {
       double inner_r = p[0];
       double outer_r = p[1];
@@ -54,22 +62,13 @@ int main() {
     3);
 
   auto model = crisp::make_model();
-
-  double eps = 100e-6;
-  double radius = 0.025 - eps / 2;
-  double height = 0.10;
-  double mass = 0.01;
-  double theta = 0.5 / 180.0 * std::numbers::pi;
-  double y_offset = -std::sin(theta) * height / 2;
-
-  double mu = 0.01;
   {
     auto& body = model->addBody({.pos = {0.0, 0.0, height / 2}});
     auto& geom = body.addGeom({.mu = mu});
     geom.createSDF(
-      {.type = 0,
+      {.type = hole_sdf,
        .param =
-         (Eigen::VectorXr(3) << radius + eps / 2, 0.040, height).finished()});
+         (Eigen::VectorXr(3) << radius + tol / 2, 0.040, height).finished()});
     geom.createMaterial(
       {.rgba = crisp::oklch(0.55f, 0.015f, 255),
        .specular = {0.25f, 0.25f, 0.25f},
@@ -111,10 +110,10 @@ int main() {
      .attenuation = {1.0f, 0.0f, 0.0f},
      .cutoff = 0.0f,
      .exponent = 0.0f});
-  model->cfg().opt.erp = 0.01;
-  model->cfg().opt.dt = 2e-3;
-  model->cfg().opt.solver = crisp::solver_e::canal;
   model->cfg().vis.bg.setOnes();
+  model->cfg().opt.dt = 2e-3;
+  model->cfg().opt.erp = 0.01;
+  model->cfg().opt.solver = crisp::solver_e::canal;
 
   auto app = crisp::make_app(model->compile());
 

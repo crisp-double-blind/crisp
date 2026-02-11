@@ -42,8 +42,8 @@ cmake --build build --config Release
 ### Targets
 - `01_peg_insertion_dsf`, `01_peg_insertion_sdf`  
   Peg insertion under tight tolerance using DSF-TDSF and SDF-SDF collision geometries, respectively.
-- `02_bolt_nut_assembly`  
-  Bolt-nut assembly task using Mesh-SDF or SDF-SDF collision geometries.
+- `02_bolt_nut_assembly_mesh`, `02_bolt_nut_assembly_sdf`  
+  Bolt-nut assembly using Mesh-SDF and SDF-SDF collision geometries, respectively.
 - `03_top_heavy_stacking`  
   Stacking of top-heavy blocks to evaluate stability under ill-conditioned configurations.
 - `04_oblique_sliding`  

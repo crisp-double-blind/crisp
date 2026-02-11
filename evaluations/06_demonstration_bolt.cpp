@@ -1,10 +1,12 @@
 #include <crisp/crisp.hpp>
 
 #include <fstream>
+#include <numbers>
 #include <sstream>
-#include <iostream>
 
-std::vector<Eigen::VectorXr> txt2traj(std::string c, int length) {
+inline double PI = std::numbers::pi;
+
+std::vector<Eigen::VectorXr> txt2traj(std::string const& c, int length) {
   std::vector<Eigen::VectorXr> data;
   Eigen::VectorXr tmp(length);
   std::ifstream file;
@@ -24,67 +26,6 @@ std::vector<Eigen::VectorXr> txt2traj(std::string c, int length) {
   return data;
 }
 
-Eigen::MatrixXr txt2mat(std::string c, int row, int col) {
-  Eigen::MatrixXr data(row, col);
-  std::ifstream file;
-  file.open(c.c_str());
-  for (int i = 0; i < row; i++) {
-    for (int j = 0; j < col; j++) {
-      file >> data(i, j);
-    }
-  }
-  file.close();
-  return data;
-}
-
-Eigen::VectorXr txt2vec(std::string c, int length) {
-  Eigen::VectorXr data(length);
-  std::ifstream file;
-  file.open(c.c_str());
-  for (int i = 0; i < length; i++) {
-    file >> data(i);
-  }
-  file.close();
-  return data;
-}
-
-double tanh_diff(double x) {
-  double cosh = 0.5 * (std::exp(x) + std::exp(-x));
-  return 1.0 / (cosh * cosh);
-}
-
-crisp::signed_distance_t NN_sdf(
-  Eigen::Vector3r p, const Eigen::MatrixXr& W0, const Eigen::MatrixXr& W1,
-  const Eigen::MatrixXr& W2, const Eigen::VectorXr& W3,
-  const Eigen::VectorXr& b0, const Eigen::VectorXr& b1,
-  const Eigen::VectorXr& b2, double b3, const Eigen::VectorXr& input_coeff,
-  const Eigen::VectorXr& output_coeff) {
-  p(0) = input_coeff(0) * p(0) + input_coeff(3);
-  p(1) = input_coeff(1) * p(1) + input_coeff(4);
-  p(2) = input_coeff(2) * p(2) + input_coeff(5);
-  Eigen::VectorXr a1 = W0 * p + b0;
-  Eigen::VectorXr a2 = W1 * a1.cwiseMax(0.0) + b1;
-  Eigen::VectorXr a3 = W2 * a2.cwiseMax(0.0) + b2;
-  double a4 = W3.dot(a3.cwiseMax(0.0)) + b3;
-
-  Eigen::VectorXr dh4 = W3 * tanh_diff(a4);
-  Eigen::VectorXr dh3 = W2.transpose() *
-    a3.binaryExpr(dh4, [](double xi, double yi) { return xi > 0 ? yi : 0.0; });
-  Eigen::VectorXr dh2 = W1.transpose() *
-    a2.binaryExpr(dh3, [](double xi, double yi) { return xi > 0 ? yi : 0.0; });
-  Eigen::VectorXr dh1 = W0.transpose() *
-    a1.binaryExpr(dh2, [](double xi, double yi) { return xi > 0 ? yi : 0.0; });
-
-  Eigen::Vector3r grad;
-  grad(0) = (dh1(0) / output_coeff(0)) * input_coeff(0);
-  grad(1) = (dh1(1) / output_coeff(0)) * input_coeff(1);
-  grad(2) = (dh1(2) / output_coeff(0)) * input_coeff(2);
-  grad.normalize();
-
-  return crisp::signed_distance_t {
-    (tanh(a4) - output_coeff(1)) / output_coeff(0), grad};
-}
-
 std::vector<Eigen::Vector3r> xyz = {
   Eigen::Vector3r(0, 0, 0.333),
   Eigen::Vector3r(0, 0, 0),
@@ -95,9 +36,7 @@ std::vector<Eigen::Vector3r> xyz = {
   Eigen::Vector3r(0.088, 0, 0),
   Eigen::Vector3r(0, 0, 0.107),
   Eigen::Vector3r(0, 0, 0)};
-// Eigen::Vector3r(0, 0, 0.09615) };
 
-double PI = 3.1415;
 std::vector<Eigen::Vector3r> rpy = {
   Eigen::Vector3r(0, 0, 0),       Eigen::Vector3r(-PI / 2, 0, 0),
   Eigen::Vector3r(PI / 2, 0, 0),  Eigen::Vector3r(PI / 2, 0, 0),
@@ -107,7 +46,7 @@ std::vector<Eigen::Vector3r> rpy = {
 
 std::vector<int> ax = {3, 3, 3, 3, 3, 3, 3, 0, 0};
 
-Eigen::Matrix3r Rot(const double& th, const char& axis) {
+Eigen::Matrix3r rot(double th, char axis) {
   Eigen::Matrix3r R;
   if (axis == 'x') {
     R << 1, 0, 0, 0, cos(th), -sin(th), 0, sin(th), cos(th);
@@ -119,173 +58,150 @@ Eigen::Matrix3r Rot(const double& th, const char& axis) {
   return R;
 }
 
-Eigen::Vector3r unskew(const Eigen::Matrix3r& S) {
+Eigen::Vector3r unskew(Eigen::Matrix3r const& S) {
   return Eigen::Vector3r(S(2, 1), S(0, 2), S(1, 0));
 }
 
 Eigen::Matrix4r get_rot(
-  const Eigen::Vector3r& _rpy, const Eigen::Vector3r& _xyz) {
-  Eigen::Matrix3r R = Rot(_rpy[2], 'z') * Rot(_rpy[1], 'y') * Rot(_rpy[0], 'x');
+  Eigen::Vector3r const& rpy, Eigen::Vector3r const& xyz) {
+  Eigen::Matrix3r R = rot(rpy[2], 'z') * rot(rpy[1], 'y') * rot(rpy[0], 'x');
   Eigen::Matrix4r SE3 = Eigen::Matrix4r::Identity();
-  SE3.block(0, 0, 3, 3) = R;
-  SE3.block(0, 3, 3, 1) = _xyz;
+  SE3.block<3, 3>(0, 0) = R;
+  SE3.block<3, 1>(0, 3) = xyz;
   return SE3;
 }
 
-Eigen::Matrix4r SE3_rot(const double th, const int ax) {
+Eigen::Matrix4r get_rot(double th, int ax) {
   Eigen::Matrix4r SE3_matrix = Eigen::Matrix4r::Identity();
   if (ax == 1) {
-    SE3_matrix.block(0, 0, 3, 3) = Rot(th, 'x');
+    SE3_matrix.block<3, 3>(0, 0) = rot(th, 'x');
   } else if (ax == 2) {
-    SE3_matrix.block(0, 0, 3, 3) = Rot(th, 'y');
+    SE3_matrix.block<3, 3>(0, 0) = rot(th, 'y');
   } else if (ax == 3) {
-    SE3_matrix.block(0, 0, 3, 3) = Rot(th, 'z');
+    SE3_matrix.block<3, 3>(0, 0) = rot(th, 'z');
   }
   return SE3_matrix;
 }
 
-Eigen::Matrix4r get_trans(const Eigen::Vector3r& pos) {
+Eigen::Matrix4r get_trans(Eigen::Vector3r const& pos) {
   Eigen::Matrix4r SE3 = Eigen::Matrix4r::Identity();
-  SE3.block(0, 3, 3, 1) = pos;
+  SE3.block<3, 1>(0, 3) = pos;
   return SE3;
 }
 
 Eigen::Matrix4r fk_ee(
-  const Eigen::VectorXr& q, const Eigen::Matrix3r& R_base,
-  const Eigen::Vector3r& p_base) {
+  Eigen::VectorXr const& q, Eigen::Matrix3r const& R_base,
+  Eigen::Vector3r const& p_base) {
   std::vector<double> qt = {q(0), q(1), q(2), q(3), q(4), q(5), q(6), 0, 0};
 
   Eigen::Matrix4r SE3 = Eigen::Matrix4r::Identity();
-  SE3.block(0, 0, 3, 3) = R_base;
-  SE3.block(0, 3, 3, 1) = p_base;
+  SE3.block<3, 3>(0, 0) = R_base;
+  SE3.block<3, 1>(0, 3) = p_base;
 
   for (int i = 0; i < 9; ++i) {
-    SE3 = SE3 * get_rot(rpy[i], xyz[i]) * SE3_rot(qt[i], ax[i]);
+    SE3 = SE3 * get_rot(rpy[i], xyz[i]) * get_rot(qt[i], ax[i]);
   }
 
   return SE3;
 }
 
 Eigen::MatrixXr jaco_ee(
-  const Eigen::VectorXr& q, const Eigen::Matrix3r& R_base,
-  const Eigen::Vector3r& p_base) {
+  Eigen::VectorXr const& q, Eigen::Matrix3r const& R_base,
+  Eigen::Vector3r const& p_base) {
   std::vector<double> qt = {q(0), q(1), q(2), q(3), q(4), q(5), q(6), 0, 0};
 
   Eigen::Matrix4r SE3 = Eigen::Matrix4r::Identity();
-  SE3.block(0, 0, 3, 3) = R_base;
-  SE3.block(0, 3, 3, 1) = p_base;
+  SE3.block<3, 3>(0, 0) = R_base;
+  SE3.block<3, 1>(0, 3) = p_base;
 
   std::vector<Eigen::Matrix4r> T;
   T.push_back(SE3);
 
   for (int i = 0; i < 9; ++i) {
-    SE3 = T[i] * get_rot(rpy[i], xyz[i]) * SE3_rot(qt[i], ax[i]);
+    SE3 = T[i] * get_rot(rpy[i], xyz[i]) * get_rot(qt[i], ax[i]);
     T.push_back(SE3);
   }
 
   Eigen::MatrixXr J(6, 7);
   J.setZero();
   for (int col = 0; col < 7; ++col) {
-    Eigen::Vector3r tmp = T[col + 1].block(0, ax[col] - 1, 3, 1);
-    Eigen::Vector3r tmp2 = SE3.block(0, 3, 3, 1) - T[col + 1].block(0, 3, 3, 1);
+    Eigen::Vector3r tmp = T[col + 1].block<3, 1>(0, ax[col] - 1);
+    Eigen::Vector3r tmp2 = SE3.block<3, 1>(0, 3) - T[col + 1].block<3, 1>(0, 3);
     tmp = tmp.cross(tmp2);
-    J.block(0, col, 3, 1) = tmp;
-    J.block(3, col, 3, 1) = T[col + 1].block(0, ax[col] - 1, 3, 1);
+    J.block<3, 1>(0, col) = tmp;
+    J.block<3, 1>(3, col) = T[col + 1].block<3, 1>(0, ax[col] - 1);
   }
 
   return J;
 }
 
 void ik_ee(
-  Eigen::VectorXr& q, const Eigen::Matrix3r& R_base,
-  const Eigen::Vector3r& p_base, const Eigen::Vector3r& p_t,
-  const Eigen::Matrix3r& R_t, const Eigen::VectorXr& q_l,
-  const Eigen::VectorXr& q_u, const Eigen::VectorXr& Kdiag) {
+  Eigen::VectorXr& q, Eigen::Matrix3r const& R_base,
+  Eigen::Vector3r const& p_base, Eigen::Vector3r const& p_t,
+  Eigen::Matrix3r const& R_t, Eigen::VectorXr const& q_l,
+  Eigen::VectorXr const& q_u, Eigen::VectorXr const& Kdiag) {
   Eigen::Matrix4r T;
   Eigen::MatrixXr J(6, 7);
   Eigen::Matrix3r R_e;
   Eigen::Vector3r p_e;
   Eigen::VectorXr dx(6);
-
   Eigen::VectorXr dq(q.size());
-  // Eigen::LLT<Eigen::MatrixXr> solver;
-
-  Eigen::MatrixXr K(6, 6);
-  K = Kdiag.asDiagonal();
 
   for (int i = 0; i < 300; ++i) {
     T = fk_ee(q, R_base, p_base);
     J = jaco_ee(q, R_base, p_base);
-    R_e = T.block(0, 0, 3, 3);
-    p_e = T.block(0, 3, 3, 1);
+    R_e = T.block<3, 3>(0, 0);
+    p_e = T.block<3, 1>(0, 3);
 
     dx.segment(0, 3) = p_e - p_t;
     dx.segment(3, 3) =
       R_e * unskew(0.5 * (R_t.transpose() * R_e - R_e.transpose() * R_t));
 
-    // JJT = J * J.transpose() + lam * lam * Eigen::MatrixXr::Identity(6, 6);
-    // solver.compute(JJT);
-
-    dq = J.transpose() * K * dx;
-    // solver.compute(J);
-    // dq = solver.solve(K * dx);
+    dq = J.transpose() * Kdiag.asDiagonal() * dx;
 
     q = q - dq / 100;
-    // COUT_VECTOR(p_t);
-    // COUT_VECTOR(p_e);
-    // COUT_VECTOR(dq);
 
     for (int j = 0; j < q.size(); ++j) {
       q[j] = std::max(std::min(q[j], q_u[j]), q_l[j]);
     }
   }
-
-  // COUT_VECTOR(p_t);
-  // COUT_VECTOR(p_e);
-  // COUT_SCALAR((p_t - p_e).norm());
 }
 
 void my_control(
-  Eigen::Ref<Eigen::VectorXr> act_in, const Eigen::VectorXr& q_cur, double time,
-  const Eigen::VectorXr& q0, const Eigen::Matrix3r& R_base,
-  const Eigen::Vector3r& p_base, const Eigen::Vector3r& p_t,
-  const Eigen::Matrix3r& R_t, const Eigen::VectorXr& q_l,
-  const Eigen::VectorXr& q_u) {
+  Eigen::Ref<Eigen::VectorXr> act_in, Eigen::VectorXr const& q_cur, double time,
+  Eigen::VectorXr const& q0, Eigen::Matrix3r const& R_base,
+  Eigen::Vector3r const& p_base, Eigen::Vector3r const& p_t,
+  Eigen::Matrix3r const& R_t, Eigen::VectorXr const& q_l,
+  Eigen::VectorXr const& q_u) {
   act_in.setZero();
 
   if (time < 16) {
     Eigen::VectorXr Kdiag(6);
     Kdiag << 10, 10, 10, 10, 10, 10;
 
-    Eigen::VectorXr q = q_cur.segment(0, 7);
-    // Eigen::VectorXr q = sd->q;
+    Eigen::VectorXr q = q_cur.head<7>();
     ik_ee(q, R_base, p_base, p_t, R_t, q_l, q_u, Kdiag);
-    act_in.segment(0, 7) = q0 + (q - q0) * std::min(time / 15, 1.0);
-  } else {
+    act_in.head<7>() = q0 + (q - q0) * std::min(time / 15, 1.0);
+  }
+
+  else {
     Eigen::VectorXr Kdiag(6);
     Kdiag << 1, 1, 10, 10, 10, 10;
 
-    // Eigen::Vector3r p_t2 = p_t +
-    //   (Eigen::Vector3r(p_t[0], p_t[1], 0.06 + 0.052 - 0.0) - p_t) *
-    //     std::min((time - 16) / 15, 1.0);
-
     Eigen::Matrix4r T = fk_ee(q_cur, R_base, p_base);
-    Eigen::Vector3r p_t2 = T.block(0, 3, 3, 1) - Eigen::Vector3r(0, 0, 0.003);
+    Eigen::Vector3r p_t2 = T.block(0, 3, 3, 1) - Eigen::Vector3r(0, 0, 0.002);
     p_t2[0] = p_t[0];
     p_t2[1] = p_t[1];
 
-    // Eigen::Matrix3r R_t2 = INROL::Rot(-0.8 * (sd->time - 35) / 5, 'z') * R_t;
     Eigen::Matrix3r R_t2 = R_t;
-    // Eigen::VectorXr q = sd->q;
 
-    Eigen::VectorXr q = q_cur.segment(0, 7);
+    Eigen::VectorXr q = q_cur.head<7>();
 
     ik_ee(q, R_base, p_base, p_t2, R_t2, q_l, q_u, Kdiag);
-    act_in.segment(0, 7) = q;
+    act_in.head<7>() = q;
   }
 
   if (time > 17) {
-    // act_in(7) = (4 * (time - 17) / 1);
     act_in(7) = q_cur[7] + PI / 6;
     if (q_cur[7] >= 4 * PI) {
       act_in(7) = q_cur[7];
@@ -293,63 +209,165 @@ void my_control(
   }
 }
 
+double fract(double x) {
+  return x - std::floor(x);
+}
+double sdf_subtraction(double a, double b) {
+  return std::max(a, -b);
+}
+double sdf_intersection(double a, double b) {
+  return std::max(a, b);
+}
+double sdf_union(double a, double b) {
+  return std::min(a, b);
+}
+
+double bolt_distance(Eigen::Vector3d const& p, double radius_attr) {
+  constexpr double screw = 1.0 / 0.005;
+  double radius = std::sqrt(p.x() * p.x() + p.y() * p.y()) - radius_attr;
+  double sqrt12 = std::sqrt(2.0) / 2.0;
+
+  double azimuth = std::atan2(p.y(), p.x());
+  double triangle = std::abs(fract(p.z() * screw - azimuth / PI / 2.0) - 0.5);
+  double thread = (radius - triangle / screw) * sqrt12;
+
+  double bolt = sdf_subtraction(thread, 0.02 - std::abs(p.z() + 0.02));
+  double cone = (p.z() - radius) * sqrt12;
+
+  bolt = sdf_subtraction(bolt, cone + 1.0 * sqrt12);
+
+  double k = 6.0 / PI / 2.0;
+  double ang = -std::floor(std::atan2(p.y(), p.x()) * k + 0.5) / k;
+
+  double s0 = std::sin(ang);
+  double s1 = std::sin(ang + PI * 0.5);
+
+  double rx = s1 * p.x() - s0 * p.y();
+  double ry = s0 * p.x() + s1 * p.y();
+  double head = rx - 0.028;
+
+  head = sdf_intersection(head, std::abs(p.z() + 0.0125) - 0.008);
+  head = sdf_intersection(head, (p.z() + radius - 0.22) * sqrt12);
+
+  return sdf_union(bolt, head);
+}
+
+Eigen::Vector3d bolt_gradient(Eigen::Vector3d const& p, double radius_attr) {
+  constexpr double eps = 1e-8;
+  double d0 = bolt_distance(p, radius_attr);
+
+  Eigen::Vector3d px = p;
+  px.x() += eps;
+  Eigen::Vector3d py = p;
+  py.y() += eps;
+  Eigen::Vector3d pz = p;
+  pz.z() += eps;
+
+  double dx = (bolt_distance(px, radius_attr) - d0) / eps;
+  double dy = (bolt_distance(py, radius_attr) - d0) / eps;
+  double dz = (bolt_distance(pz, radius_attr) - d0) / eps;
+
+  return Eigen::Vector3d(dx, dy, dz);
+}
+
 int main() {
-  // crisp::__logger__->set_level(spdlog::level::debug);
+  int bolt_sdf_type = crisp::register_sdf(
+    [&](Eigen::Vector3r const& x, Eigen::VectorXr const& p) {
+      double radius_attr = static_cast<double>(p[0]);
+      Eigen::Vector3d xd = x.template cast<double>();
 
-  Eigen::MatrixXr W0 = txt2mat("assets/boltnut/W0.txt", 64, 3);
-  Eigen::MatrixXr W1 = txt2mat("assets/boltnut/W1.txt", 64, 64);
-  Eigen::MatrixXr W2 = txt2mat("assets/boltnut/W2.txt", 64, 64);
-  Eigen::VectorXr W3 = txt2vec("assets/boltnut/W3.txt", 64);
-  Eigen::VectorXr b0 = txt2vec("assets/boltnut/b0.txt", 64);
-  Eigen::VectorXr b1 = txt2vec("assets/boltnut/b1.txt", 64);
-  Eigen::VectorXr b2 = txt2vec("assets/boltnut/b2.txt", 64);
-  Eigen::VectorXr b3_vec = txt2vec("assets/boltnut/b3.txt", 1);
-  double b3 = b3_vec(0);
-  Eigen::VectorXr input_coeff = txt2vec("assets/boltnut/input_coeff.txt", 6);
-  Eigen::VectorXr output_coeff = txt2vec("assets/boltnut/output_coeff.txt", 2);
+      double dist = bolt_distance(xd, radius_attr);
+      Eigen::Vector3d g = bolt_gradient(xd, radius_attr);
 
-  int sdf_type = crisp::register_sdf(
-    [&](Eigen::Vector3r const& x, Eigen::VectorXr const&) {
-      return NN_sdf(
-        x, W0, W1, W2, W3, b0, b1, b2, b3, input_coeff, output_coeff);
+      double gn = g.norm();
+      Eigen::Vector3d n = Eigen::Vector3d::Zero();
+      if (gn > 1e-12) {
+        n = g / gn;
+      }
+
+      Eigen::Vector3r grad =
+        n.template cast<typename Eigen::Vector3r::Scalar>();
+
+      return crisp::signed_distance_t {
+        static_cast<typename Eigen::Vector3r::Scalar>(dist), grad};
     },
     [](Eigen::Matrix3r const&, Eigen::VectorXr const&) {
-      return Eigen::Vector6r {-0.025, -0.025, 0.019, 0.025, 0.025, 0.041};
+      return Eigen::Vector6r {-0.035, -0.035, -0.05, 0.035, 0.035, 0.05};
     },
-    0);
+    1);
 
   auto model = crisp::make_model();
   model->addRobot(
-    {.path = "assets/panda/panda_hebi.urdf", .root_pos = {0, 0, 0.011}});
+    {.path = "assets/panda/panda_hebi_demo.urdf"});
   {
-    auto& body = model->addBody({.pos = {0.5, -0.025, 0.015}});
-    auto& geom_r =
-      body.addGeom({.visual = true, .con_type = 0, .con_affinity = 0});
-    geom_r.createMesh(
-      {.path = "assets/boltnut/M48_P5_bolt.obj", .scale = {1, 1, 1}});
-    auto& geom_c = body.addGeom({.visual = false});
-    geom_c.createSDF({.type = sdf_type});
+    auto& body = model->addBody(
+      {.pos = {0.5, -0.025, 0.015 - 0.011},
+       .quat = {0, 1, 0, 0},
+       .mass = 461.829,
+       .inertia = {61.52395774, 38.72903532, 38.71283906, 0, 0, 0}},
+      true);
+    auto& geom = body.addGeom({.visual = true});
+    double tol = 2000e-6;
+    geom.createSDF(
+      {.type = bolt_sdf_type,
+       .param =
+         (Eigen::VectorXr(1) << 41.86565 / 1000 / 2 - tol / 2).finished()});
+    geom.createMaterial(
+      {.rgba = crisp::oklch(0.74f, 0.02f, 255),
+       .emission = {0.0f, 0.0f, 0.0f},
+       .specular = {0.45f, 0.45f, 0.45f},
+       .shininess = 64});
   }
-  model->cfg().vis.cam.target = {0.3f, 0.0f, 0.25f};
+  {
+    // table
+    auto& body = model->addBody({.pos = {0.5, -0.025, 0}}, true);
+    auto& geom = body.addGeom(
+      {.type = crisp::geometry_e::box,
+       .size = crisp::make_box_size(0.1, 0.1, 0.022),
+       .mu = 0.1});
+    geom.createMaterial(
+      {.rgba = crisp::oklch(0.80f, 0.008f, 90),
+       .emission = {0.0f, 0.0f, 0.0f},
+       .specular = {0.04f, 0.04f, 0.04f},
+       .shininess = 16});
+  }
+  model->cfg().vis.cam.target = {0.3f, 0.0f, 0.3f};
   model->cfg().vis.cam.azimuth = 140.0f;
-  model->cfg().vis.cam.elevation = -10.0f;
+  model->cfg().vis.cam.elevation = 0.0f;
+  model->cfg().vis.cam.fovy = 45.0f;
   model->addLight(
     {.type = crisp::light_e::directional,
      .enabled = true,
      .cast_shadow = true,
-     .pos = {1.0f, -1.0f, 1.0f},
-     .dir = {-1.0f, 1.0f, -1.0f},
-     .ambient = {0.3f, 0.3f, 0.3f},
-     .diffuse = {0.8f, 0.8f, 0.8f},
-     .specular = {1.0f, 1.0f, 1.0f},
+     .pos = {3.0f, -2.0f, 1.0f},
+     .dir = {-3.0f, 2.0f, -1.0f},
+     .ambient = {0.1f, 0.1f, 0.1f},
+     .diffuse = {0.4f, 0.4f, 0.4f},
+     .specular = {0.5f, 0.5f, 0.5f},
      .attenuation = {1.0f, 0.0f, 0.0f},
      .cutoff = 0.0f,
      .exponent = 0.0f});
+  model->addLight(
+    {.type = crisp::light_e::directional,
+     .enabled = true,
+     .cast_shadow = true,
+     .pos = {1.0f, -2.0f, 3.0f},
+     .dir = {-1.0f, 2.0f, -3.0f},
+     .ambient = {0.0f, 0.0f, 0.0f},
+     .diffuse = {0.8f, 0.8f, 0.8f},
+     .specular = {0.3f, 0.3f, 0.3f},
+     .attenuation = {1.0f, 0.0f, 0.0f},
+     .cutoff = 0.0f,
+     .exponent = 0.0f});
+  model->cfg().opt.gravity.setZero();
+  model->cfg().opt.solver_max_iter = 128;
+  model->cfg().opt.solver = crisp::solver_e::canal;
+
   for (int i = 0; i < 7; ++i) {
     model->addActuator(
       {.type = crisp::actuator_e::position,
        .jointid = i + 1,
-       .gain = {0, 2000, 200}});
+       .gain = {0, 1000, 100}});
   }
   model->addActuator(
     {.type = crisp::actuator_e::position, .jointid = 9, .gain = {0, 50, 5}});
@@ -360,31 +378,24 @@ int main() {
   m->state.q0() = q0;
   m->act.u0() << 0, 0, 0, 0, 0, 0, 0, 0;
 
+  auto app = crisp::make_app(std::move(m));
+
+  auto u_traj = txt2traj("assets/boltnut/boltnut_q_13.csv", 8);
+  app->data().act.u() = u_traj[0];
+
   Eigen::VectorXr q_l(8);
   q_l << -PI, -PI, -PI, -PI, -PI, -PI, -1e+10, -1e+10;
   Eigen::VectorXr q_u(8);
   q_u << PI, PI, PI, PI, PI, PI, 1e+10, 1e+10;
 
-  // m->opt.gravity.setZero();
-
-  m->opt.solver_max_iter = 128;
-  m->opt.jacobian = crisp::jacobian_e::sparse;
-  // m->opt.solver = crisp::solver_e::canal;
-  m->opt.solver = crisp::solver_e::sub_admm;
-
-  auto app = crisp::make_app(std::move(m), false);
-
-  auto u_traj = txt2traj("assets/boltnut/boltnut_q_13.csv", 8);
-  app->data().act.u() = u_traj[0];
-
   app->setControl([&](auto const& m, auto const& d, auto u, auto udot) {
     my_control(
       u, d.state.q(), d.world.time, q0, Eigen::Matrix3r::Identity(),
-      Eigen::Vector3r(0, 0, 0.011), Eigen::Vector3r(0.5, -0.025, 0.015 + 0.145),
-      Rot(PI, 'x'), q_l, q_u);
+      Eigen::Vector3r(0, 0, 0.011),
+      Eigen::Vector3r(0.5 + 0.00, -0.025 + 0.00, 0.015 + 0.155), rot(PI, 'x'),
+      q_l, q_u);
   });
 
-  bool trigger = true;
   app->init();
   while (app->isOpen()) {
     app->render();

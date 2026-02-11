@@ -1,7 +1,5 @@
 #include <crisp/crisp.hpp>
 
-#include <fstream>
-
 #include "utils/math.hpp"
 
 int main() {
@@ -62,7 +60,6 @@ int main() {
   model->cfg().vis.cam.distance = 0.5f;
   model->cfg().vis.cam.azimuth = -15.0f;
   model->cfg().vis.cam.elevation = -15.0f;
-  // model->cfg().vis.bg.setOnes();
   model->addLight(
     {.type = crisp::light_e::directional,
      .enabled = true,
@@ -77,23 +74,13 @@ int main() {
      .exponent = 0.0f});
   model->cfg().opt.dt = 1e-3;
   model->cfg().opt.erp = 1e-3;
-  model->cfg().opt.margin[2] = 0.1;
   model->cfg().opt.solver = crisp::solver_e::canal;
 
-  auto m = model->compile();
-
-  auto logger = std::ofstream(".log/crisp_stacking_10_canal.csv");
-  logger << "time,x,y,z\n";
-  auto app = crisp::make_app(std::move(m));
-  app->addPostStepHook([&](auto const& m, auto const& d) {
-    logger << d.world.time << "," << d.body.pos[2][0] << "," << d.body.pos[2][1]
-           << "," << d.body.pos[2][2] << "\n";
-  });
+  auto app = crisp::make_app(model->compile());
 
   app->init();
   while (app->isOpen()) {
     app->render();
-    // if (app->data().world.time > 10.0) break;
   }
 
   return 0;

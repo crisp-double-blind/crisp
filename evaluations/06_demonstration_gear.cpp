@@ -1,44 +1,36 @@
 #include <crisp/crisp.hpp>
 
-#include <fstream>
-#include <numbers>
+#include "utils/math.hpp"
 
-inline double Intersection(double a, double b) {
+inline double PI = std::numbers::pi;
+
+double sdf_intersection(double a, double b) {
   return std::max(a, b);
 }
-
-inline double Subtraction(double a, double b) {
+double sdf_subtraction(double a, double b) {
   return std::max(a, -b);
 }
-
-double circle(double rho, double r) {
+double sdf_circle(double rho, double r) {
   return rho - r;
 }
 
-double smoothUnion(double a, double b, double k) {
+double sdf_smooth_union(double a, double b, double k) {
   double h = std::min(std::max(0.5 + 0.5 * (b - a) / k, 0.0), 1.0);
   return b * (1. - h) + a * h - k * h * (1. - h);
 }
-
-double smoothIntersection(double a, double b, double k) {
-  return Subtraction(
-    Intersection(a, b), smoothUnion(Subtraction(a, b), Subtraction(b, a), k));
-}
-
-double extrusion(const double p[3], double sdf_2d, double h) {
-  double w[2] = {sdf_2d, abs(p[2]) - h};
-  double w_abs[2] = {std::max(w[0], 0.0), std::max(w[1], 0.0)};
-  return std::min(std::max(w[0], w[1]), 0.) +
-    std::sqrt(w_abs[0] * w_abs[0] + w_abs[1] * w_abs[1]);
+double sdf_smooth_intersection(double a, double b, double k) {
+  return sdf_subtraction(
+    sdf_intersection(a, b),
+    sdf_smooth_union(sdf_subtraction(a, b), sdf_subtraction(b, a), k));
 }
 
 double mod(double x, double y) {
   return x - y * std::floor(x / y);
 }
 
-double distance2D(
-  Eigen::Vector3r p, const double alpha = 0, const double D = 2.8,
-  const double N = 25, const double innerD = -1) {
+double distance_2d(
+  Eigen::Vector3r const& p, double alpha = 0, double D = 2.8, double N = 25,
+  double innerD = -1) {
   // see https://www.shadertoy.com/view/3lG3WR
   double psi = 3.096e-5 * N * N - 6.557e-3 * N + 0.551;  // pressure angle
   double R = D / 2.0;
@@ -51,9 +43,8 @@ double distance2D(
 
   double rho = std::sqrt(p[0] * p[0] + p[1] * p[1]);
   double Pd = N / D;  // Diametral Pitch: teeth per unit length of diameter
-  double P = std::numbers::pi /
-    Pd;  // Circular Pitch: the length of arc round the pitch circle
-         // between corresponding points on adjacent teeth.
+  double P = PI / Pd;  // Circular Pitch: the length of arc round the pitch
+                       // circle between corresponding points on adjacent teeth.
   double a = 1.0 / Pd;  // Addendum: radial length of a tooth from the pitch
                         // circle to the tip of the tooth.
 
@@ -103,22 +94,22 @@ double distance2D(
     distb = ta - Rb * thetab;
   }
 
-  double gearOuter = circle(rho, Ro);
-  double gearLowBase = circle(rho, Ro - h);
-  double crownBase = circle(rho, innerR);
-  double cogs = Intersection(dista, distb);
+  double gearOuter = sdf_circle(rho, Ro);
+  double gearLowBase = sdf_circle(rho, Ro - h);
+  double crownBase = sdf_circle(rho, innerR);
+  double cogs = sdf_intersection(dista, distb);
   double baseWalls =
-    Intersection(fia - (alphaStride - shift), fib - (alphaStride - shift));
+    sdf_intersection(fia - (alphaStride - shift), fib - (alphaStride - shift));
 
-  cogs = Intersection(baseWalls, cogs);
-  cogs = smoothIntersection(gearOuter, cogs, 0.0035 * D);
-  cogs = smoothUnion(gearLowBase, cogs, Rb - Ro + h);
-  cogs = Subtraction(cogs, crownBase);
+  cogs = sdf_intersection(baseWalls, cogs);
+  cogs = sdf_smooth_intersection(gearOuter, cogs, 0.0035 * D);
+  cogs = sdf_smooth_union(gearLowBase, cogs, Rb - Ro + h);
+  cogs = sdf_subtraction(cogs, crownBase);
 
   return cogs;
 }
 
-double extrusion(Eigen::Vector3r p, double sdf_2d, double h) {
+double extrusion(Eigen::Vector3r const& p, double sdf_2d, double h) {
   double w[2] = {sdf_2d, std::abs(p[2]) - h};
   double w_abs[2] = {std::max(w[0], 0.0), std::max(w[1], 0.0)};
   return std::min(std::max(w[0], w[1]), 0.) +
@@ -126,14 +117,14 @@ double extrusion(Eigen::Vector3r p, double sdf_2d, double h) {
 }
 
 double distance(
-  Eigen::Vector3r p, const double alpha = 0, const double D = 2.8,
-  const double N = 25, const double thickness = 0.2, const double innerD = -1) {
-  return extrusion(p, distance2D(p, alpha, D, N, innerD), thickness / 2.);
+  Eigen::Vector3r const& p, double alpha = 0, double D = 2.8, double N = 25,
+  double thickness = 0.2, double innerD = -1) {
+  return extrusion(p, distance_2d(p, alpha, D, N, innerD), thickness / 2.);
 }
 
 crisp::signed_distance_t gear_sdf(
-  Eigen::Vector3r p, const double alpha = 0, const double D = 2.8,
-  const double N = 25, const double thickness = 0.2, const double innerD = -1) {
+  Eigen::Vector3r const& p, double alpha = 0, double D = 2.8, double N = 25,
+  double thickness = 0.2, double innerD = -1) {
   double dist = distance(p, alpha, D, N, thickness, innerD);
 
   double eps = 1e-8;
@@ -157,16 +148,16 @@ crisp::signed_distance_t gear_sdf(
     grad /= grad.norm();
   }
 
-  return crisp::signed_distance_t {dist, grad};
+  return {dist, grad};
 }
 
 void my_control(
-  Eigen::Ref<Eigen::VectorXr> act_in, double time, const Eigen::VectorXr& q0,
-  const Eigen::VectorXr& qt1, const Eigen::VectorXr& qt2,
-  const Eigen::VectorXr& qt3, const Eigen::VectorXr& qt4,
-  const Eigen::VectorXr& qt5) {
+  Eigen::Ref<Eigen::VectorXr> act_in, double time, Eigen::VectorXr const& q0,
+  Eigen::VectorXr const& qt1, Eigen::VectorXr const& qt2,
+  Eigen::VectorXr const& qt3, Eigen::VectorXr const& qt4,
+  Eigen::VectorXr const& qt5) {
   act_in.setZero();
-  act_in[9] = -7.2 / 180 * std::numbers::pi;
+  act_in[9] = utils::deg2rad(-7.2);
 
   if (time < 5) {
     act_in.segment(0, 7) = q0;
@@ -207,19 +198,12 @@ void my_control(
     act_in.segment(0, 7) = qt5;
     act_in[7] = 0.03;
     act_in[8] = 0.03;
-    act_in[9] = std::min(
-      -(time - 18) * std::numbers::pi * 0.7 - 7.2 / 180 * std::numbers::pi,
-      200 * std::numbers::pi);
+    act_in[9] = std::min(-(time - 18) * PI * 0.7 - 7.2 / 180 * PI, 200 * PI);
   }
 }
 
 int main() {
-  // crisp::__logger__->set_level(spdlog::level::debug);
-
-  auto model = crisp::make_model();
-  model->addRobot({.path = "assets/panda/franka_gripper2.urdf"});
-
-  int sdf_type = crisp::register_sdf(
+  int gear1_sdf_type = crisp::register_sdf(
     [](Eigen::Vector3r const& x, Eigen::VectorXr const&) {
       return gear_sdf(x, 0, 0.1, 25, 0.01, 0.02);
     },
@@ -228,7 +212,7 @@ int main() {
     },
     0);
 
-  int sdf_type2 = crisp::register_sdf(
+  int gear2_sdf_type = crisp::register_sdf(
     [](Eigen::Vector3r const& x, Eigen::VectorXr const&) {
       return gear_sdf(x, 0, 0.2, 50, 0.01, 0.02);
     },
@@ -237,27 +221,29 @@ int main() {
     },
     0);
 
-  crisp::material_t mat_table = {
+  auto mat_table = crisp::material_t {
     .rgba = crisp::oklch(0.80f, 0.008f, 90),
     .emission = {0.0f, 0.0f, 0.0f},
     .specular = {0.04f, 0.04f, 0.04f},
     .shininess = 16};
-  crisp::material_t mat_gear = {
+  auto mat_gear = crisp::material_t {
     .rgba = crisp::oklch(0.68f, 0.015f, 250),
     .emission = {0.0f, 0.0f, 0.0f},
     .specular = {0.55f, 0.55f, 0.55f},
     .shininess = 110};
-  crisp::material_t mat_shaft = {
+  auto mat_shaft = crisp::material_t {
     .rgba = crisp::oklch(0.62f, 0.008f, 250),
     .emission = {0.0f, 0.0f, 0.0f},
     .specular = {0.85f, 0.85f, 0.85f},
     .shininess = 240};
-  crisp::material_t mat_bar = {
+  auto mat_bar = crisp::material_t {
     .rgba = crisp::oklch(0.64f, 0.07f, 200),
     .emission = {0.0f, 0.008f, 0.01f},
     .specular = {0.22f, 0.22f, 0.22f},
     .shininess = 70};
 
+  auto model = crisp::make_model();
+  model->addRobot({.path = "assets/panda/franka_gripper2.urdf"});
   {
     // actuator axis
     double eps = 2e-3;  // diameter tolerance
@@ -271,9 +257,7 @@ int main() {
     // actuator gear
     auto& body_g = body.addChild(
       {.pos = {0.0, 0.0, -0.02 + 0.0075},
-       .quat = Eigen::Quaterniond(
-         Eigen::AngleAxisd(
-           -7.2 / 180 * std::numbers::pi, Eigen::Vector3d::UnitZ())),
+       .quat = utils::aa2quat(-7.2, {0.0, 0.0, 1.0}),
        .mass = 0.1,
        .inertia = {6.33e-5, 6.33e-5, 1.25e-4, 0, 0, 0}},
       {.type = crisp::joint_e::revolute, .axis = {0, 0, 1}});
@@ -285,16 +269,14 @@ int main() {
 
     auto& geom_c = body_g.addGeom(
       {.visual = false, .con_type = 2, .con_affinity = 1, .mu = 0.1});
-    geom_c.createSDF({.type = sdf_type});
+    geom_c.createSDF({.type = gear1_sdf_type});
   }
 
   {
     // target gear
     auto& body = model->addBody(
       {.pos = {0.52, 0.13, 0.415},
-       .quat = Eigen::Quaterniond(
-         Eigen::AngleAxisd(
-           3.6 / 180 * std::numbers::pi, Eigen::Vector3d::UnitZ())),
+       .quat = utils::aa2quat(3.6, {0.0, 0.0, 1.0}),
        .mass = 0.1,
        .inertia = {6.33e-5, 6.33e-5, 1.25e-4, 0, 0, 0}},
       false);
@@ -305,7 +287,7 @@ int main() {
     geom_v.createMaterial(mat_gear);
 
     auto& geom_c = body.addGeom({.visual = false, .mu = 0.1});
-    geom_c.createSDF({.type = sdf_type});
+    geom_c.createSDF({.type = gear1_sdf_type});
   }
 
   {
@@ -323,9 +305,7 @@ int main() {
     // end gear
     auto& body_g = body.addChild(
       {.pos = {0.0, 0.0, -0.02 + 0.0075},
-       .quat = Eigen::Quaterniond(
-         Eigen::AngleAxisd(
-           -3.6 / 180 * std::numbers::pi, Eigen::Vector3d::UnitZ())),
+       .quat = utils::aa2quat(-3.6, {0.0, 0.0, 1.0}),
        .mass = 0.1,
        .inertia = {6.33e-5, 6.33e-5, 1.25e-4, 0, 0, 0}},
       {.type = crisp::joint_e::revolute, .axis = {0, 0, 1}});
@@ -337,13 +317,12 @@ int main() {
 
     auto& geom_c = body_g.addGeom(
       {.visual = false, .con_type = 2, .con_affinity = 1, .mu = 0.1});
-    geom_c.createSDF({.type = sdf_type2});
+    geom_c.createSDF({.type = gear2_sdf_type});
 
     // bar
     auto& body_b = body_g.addChild(
       {.pos = {0.05, 0.0, 0.005 + 0.005},
-       .quat =
-         Eigen::Quaterniond(Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ()))},
+       .quat = utils::aa2quat(0.0, {0.0, 0.0, 1.0})},
       {.type = crisp::joint_e::fixed});
     auto& geom_b = body_b.addGeom(
       {.type = crisp::geometry_e::box,
@@ -393,34 +372,23 @@ int main() {
      .attenuation = {1.0f, 0.0f, 0.0f},
      .cutoff = 0.0f,
      .exponent = 0.0f});
-
   model->cfg().opt.erp = 0.01;
-  // model->cfg().opt.dt = 1e-2;
+  model->cfg().opt.solver = crisp::solver_e::sub_admm;
+  model->cfg().opt.solver_max_iter = 500;
+  model->cfg().opt.warmstart = false;
+  model->cfg().ncon_max = 1000;
 
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < 10; ++i) {
+    if (i == 7) continue;
     model->addActuator(
       {.type = crisp::actuator_e::position,
        .jointid = i + 1,
        .gain = {0, 2000, 200}});
   }
   model->addActuator(
-    {.type = crisp::actuator_e::position,
-     .jointid = 9,
-     .gain = {0, 2000, 200}});
-  model->addActuator(
-    {.type = crisp::actuator_e::position,
-     .jointid = 10,
-     .gain = {0, 2000, 200}});
-
-  model->addActuator(
     {.type = crisp::actuator_e::position, .jointid = 12, .gain = {0, 200, 20}});
 
-  model->cfg().opt.solver = crisp::solver_e::sub_admm;
-  model->cfg().ncon_max = 1000;
-  // model->cfg().opt.canal_beta_init = 1e2;
-
   auto m = model->compile();
-  // m->opt.gravity.setZero();
 
   Eigen::VectorXr q0(7);
   q0 << 0.237437218809148, -0.728100541383945, 0.152045154951825,
@@ -446,34 +414,12 @@ int main() {
   qt5 << -0.302424535322473, -0.608112038269523, 0.0518181670160084,
     -2.69542055794137, 2.65400282348492, 2.56127271483118, -1.12278357320995;
 
-  // Eigen::VectorXr qt6(7);  // second grasp
-  // qt6 << -0.290206221132323, 0.409664117060629, 0.233257688493790,
-  //   -2.16320442130593, 0.0588711225601930, 3.34590315786686,
-  //   -0.176220273049793;
+  m->state.q0().head<9>(0) << q0, 0, 0;
+  m->act.u0().head<9>(0) << q0, 0, 0;
 
-  // Eigen::VectorXr qt7(7);  // second back
-  // qt7 << 0.114971058110301, -0.174211382928032, -0.367366162119246,
-  //   -3.02000528458723, -0.274547156475930, 3.63632930745742,
-  //   0.0226145474130461;
+  m->geom.mu[13] = m->geom.mu[17] = 10;
 
-  m->state.q0().segment(0, 9) << q0[0], q0[1], q0[2], q0[3], q0[4], q0[5],
-    q0[6], 0, 0;
-  m->act.u0().segment(0, 9) << q0[0], q0[1], q0[2], q0[3], q0[4], q0[5], q0[6],
-    0, 0;
-
-  m->geom.mu[13] = 10;
-  m->geom.mu[17] = 10;
-
-  m->opt.warmstart = false;
-  m->opt.solver_max_iter = 500;
   auto app = crisp::make_app(std::move(m));
-
-  // auto logger = std::ofstream(".log/gear_subadmm.csv");
-  // logger << "time,fps,ncon,res_p,res_d\n";
-  // app->addPostStepHook([&](auto const& m, auto const& d) {
-  //   logger << d.world.time << "," << 1 / d.timer.step << "," << d.size.ncon
-  //          << "," << d.solver.res_p << "," << d.solver.res_d << "\n";
-  // });
 
   app->setControl([&](auto const& m, auto const& d, auto u, auto udot) {
     my_control(u, d.world.time, q0, qt1, qt2, qt3, qt4, qt5);
@@ -482,7 +428,6 @@ int main() {
   app->init();
   while (app->isOpen()) {
     app->render();
-    // if (app->data().world.time > 30.0) break;
   }
 
   return 0;

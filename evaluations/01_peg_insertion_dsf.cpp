@@ -1,18 +1,18 @@
 #include <crisp/crisp.hpp>
 
-#include <numbers>
+#include "utils/math.hpp"
 
 int main() {
-  auto model = crisp::make_model();
+  double tol = 100e-6;
 
-  double eps = 100e-6;
-  double radius = 0.025 - eps / 2;
+  double radius = 0.025 - tol / 2;
   double height = 0.10;
   double mass = 0.01;
-  double theta = 0.5 / 180.0 * std::numbers::pi;
+  double theta = utils::deg2rad(0.5);
   double y_offset = -std::sin(theta) * height / 2;
-
   double mu = 0.01;
+
+  auto model = crisp::make_model();
   {
     auto& body = model->addBody({.pos = {0.0, 0.0, height / 2}});
     auto& geom = body.addGeom({.mu = mu});
@@ -62,10 +62,10 @@ int main() {
      .attenuation = {1.0f, 0.0f, 0.0f},
      .cutoff = 0.0f,
      .exponent = 0.0f});
-  model->cfg().opt.erp = 0.01;
-  model->cfg().opt.dt = 2e-3;
-  model->cfg().opt.solver = crisp::solver_e::canal;
   model->cfg().vis.bg.setOnes();
+  model->cfg().opt.dt = 2e-3;
+  model->cfg().opt.erp = 0.01;
+  model->cfg().opt.solver = crisp::solver_e::canal;
 
   auto app = crisp::make_app(model->compile());
 

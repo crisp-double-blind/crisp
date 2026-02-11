@@ -1,7 +1,5 @@
 #include <crisp/crisp.hpp>
 
-#include <fstream>
-
 #include "utils/math.hpp"
 
 int main() {
@@ -60,19 +58,9 @@ int main() {
      .attenuation = {1.0f, 0.0f, 0.0f},
      .cutoff = 0.0f,
      .exponent = 0.0f});
-  // model->cfg().opt.dt = 1e-3;
-  model->cfg().opt.margin[2] = 0.1;
   model->cfg().opt.solver = crisp::solver_e::canal;
 
-  auto m = model->compile();
-
-  auto logger = std::ofstream(".log/crisp_stick_canal.csv");
-  logger << "time,x,y,z\n";
-  auto app = crisp::make_app(std::move(m));
-  app->addPostStepHook([&](crisp::model_t const& m, crisp::data_t const& d) {
-    logger << d.world.time << "," << d.body.pos[1][0] << "," << d.body.pos[1][1]
-           << "," << d.body.pos[1][2] << "\n";
-  });
+  auto app = crisp::make_app(model->compile());
 
   app->init();
   while (app->isOpen()) {

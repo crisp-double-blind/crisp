@@ -206,13 +206,13 @@
 		<visual>
 			<origin rpy="0 0 0" xyz="0 0 0.09615" />
 			<geometry>
-				<mesh filename="../boltnut/M48_P5_nut.obj" />
+				<mesh filename="../boltnut/nut_demo.obj" />
 			</geometry>
 		</visual>
 		<collision>
 			<origin rpy="0 0 0" xyz="0 0 0.09615" />
 			<geometry>
-				<mesh filename="../boltnut/M48_P5_nut.obj" />
+				<mesh filename="../boltnut/nut_demo.obj" />
 			</geometry>
 		</collision>
 		<inertial>
