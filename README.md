@@ -11,7 +11,10 @@ This repository provides a pre-release version of CRISP for the purpose of doubl
 ## Configure & Build
 
 ### Linux / macOS
-Build support is currently not available.
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
 
 ### Windows
 ```powershell
